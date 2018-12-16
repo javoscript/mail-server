@@ -1,0 +1,119 @@
+version: '2'
+
+services:
+
+  front:
+    image: mailu/nginx:$VERSION
+    container_name: mailu_front
+    restart: always
+    env_file: .env
+    ports:
+    - "110:110"
+    - "143:143"
+    - "993:993"
+    - "995:995"
+    - "25:25"
+    - "465:465"
+    - "587:587"
+    expose:
+      - "80"
+      - "443"
+    volumes:
+      - "$ROOT/certs:/certs"
+    environment:
+      - VIRTUAL_HOST=mail.your-domain.com
+      - LETSENCRYPT_HOST=mail.your-domain.com.ar
+      - LETSENCRYPT_EMAIL=your@mail.com
+    networks:
+      - default
+
+  redis:
+    container_name: mailu_redis
+    image: redis:alpine
+    restart: always
+    volumes:
+      - "$ROOT/redis:/data"
+
+  imap:
+    container_name: mailu_imap
+    image: mailu/dovecot:$VERSION
+    restart: always
+    env_file: .env
+    volumes:
+      - "$ROOT/data:/data"
+      - "$ROOT/mail:/mail"
+      - "$ROOT/overrides:/overrides"
+    depends_on:
+      - front
+
+  smtp:
+    container_name: mailu_smtp
+    image: mailu/postfix:$VERSION
+    restart: always
+    env_file: .env
+    volumes:
+      - "$ROOT/data:/data"
+      - "$ROOT/overrides:/overrides"
+    depends_on:
+      - front
+
+  antispam:
+    container_name: mailu_antispam
+    image: mailu/rspamd:$VERSION
+    restart: always
+    env_file: .env
+    volumes:
+      - "$ROOT/filter:/var/lib/rspamd"
+      - "$ROOT/dkim:/dkim"
+      - "$ROOT/overrides/rspamd:/etc/rspamd/override.d"
+    depends_on:
+      - front
+
+  antivirus:
+    container_name: mailu_antivirus
+    image: mailu/$ANTIVIRUS:$VERSION
+    restart: always
+    env_file: .env
+    volumes:
+      - "$ROOT/filter:/data"
+
+  webdav:
+    container_name: mailu_webdav
+    image: mailu/$WEBDAV:$VERSION
+    restart: always
+    env_file: .env
+    volumes:
+      - "$ROOT/dav:/data"
+
+  admin:
+    image: mailu/admin:$VERSION
+    container_name: mailu_admin
+    restart: always
+    env_file: .env
+    volumes:
+      - "$ROOT/data:/data"
+      - "$ROOT/dkim:/dkim"
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - redis
+
+  webmail:
+    container_name: mailu_webmail
+    image: "mailu/$WEBMAIL:$VERSION"
+    restart: always
+    env_file: .env
+    volumes:
+      - "$ROOT/webmail:/data"
+
+  fetchmail:
+    container_name: mailu_fetchmail
+    image: mailu/fetchmail:$VERSION
+    restart: always
+    env_file: .env
+    volumes:
+      - "$ROOT/data:/data"
+
+networks:
+  default:
+    external:
+      name: reverse-proxy_default
